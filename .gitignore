@@ -1,0 +1,8 @@
+.DS_Store
+kiss2
+*.test
+*~
+*.log
+logs/*
+db.json
+*.swp
