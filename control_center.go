@@ -11,6 +11,7 @@ var Queue chan int
 
 type ControlCenter struct {
     sync.Mutex
+    nextId int
     db     string
     videos map[int]*Video
 }
@@ -27,18 +28,14 @@ func (self *ControlCenter) Get(id int) (*Video, bool) {
 func (self *ControlCenter) New(url string) (*Video, error) {
     self.Lock()
     defer self.Unlock()
-    var max int
-    for id, video := range self.videos {
-        if id > max {
-            max = id
-        }
+    for _, video := range self.videos {
         if video.Url == url {
             return nil, ErrUrlDuplicated
         }
     }
-    max++
-    v := &Video{Url: url, Id: max}
-    self.videos[max] = v
+    v := &Video{Url: url, Id: self.nextId}
+    self.videos[self.nextId] = v
+    self.nextId++
     go v.Do()
     return v, nil
 }
@@ -90,6 +87,11 @@ func (self *VideoInfo) Video() *Video {
     return &Video{Status: self.Status, Id: self.Id, err: err, Name: self.Name, Url: self.Url}
 }
 
+type jsondb struct {
+    NextId int          `json:"next_id"`
+    Videos []*VideoInfo `json:"videos"`
+}
+
 func (self *ControlCenter) Save() error {
     self.Lock()
     defer self.Unlock()
@@ -102,7 +104,7 @@ func (self *ControlCenter) Save() error {
         return err
     }
     defer fp.Close()
-    return json.NewEncoder(fp).Encode(info)
+    return json.NewEncoder(fp).Encode(jsondb{Videos: info, NextId: self.nextId})
 }
 
 func (self *ControlCenter) Init() error {
@@ -112,12 +114,18 @@ func (self *ControlCenter) Init() error {
     if err != nil {
         return err
     }
-    info := make([]*VideoInfo, 0)
+    //info := make([]*VideoInfo, 0)
+    info := jsondb{Videos: make([]*VideoInfo, 0), NextId: 0}
     err = json.NewDecoder(fp).Decode(&info)
     if err != nil {
         return err
     }
-    for _, vi := range info {
+    if info.NextId == 0 {
+        self.nextId = 1
+    } else {
+        self.nextId = info.NextId
+    }
+    for _, vi := range info.Videos {
         self.videos[vi.Id] = vi.Video()
         switch vi.Status {
         case StatusCombining, StatusConverting, StatusDownloading:

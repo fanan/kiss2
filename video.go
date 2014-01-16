@@ -274,5 +274,7 @@ func (self *Video) Do() {
     self.Status = StatusSuccess
     DefaultControlCenter.Save()
 
+    self.logger.Println("video hanled")
+
     return
 }

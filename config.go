@@ -53,6 +53,8 @@ func initConfig(fn string) error {
     if err != nil {
         if !os.IsNotExist(err) {
             return err
+        } else {
+            DefaultControlCenter.nextId = 1
         }
     }
 
