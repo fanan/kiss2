@@ -14,13 +14,12 @@ var TaskModule = angular.module("TaskAdmin", ["ui.bootstrap"]);
 TaskModule.controller("TasksListController",
   function($scope, $http, $timeout, $filter) {
 
-    $scope.StatusWaiting = 0;
-    $scope.StatusDownloading = 1;
-    $scope.StatusCombining = 2;
-    $scope.StatusConverting = 3;
+    $scope.StatusUnstarted = 0;
+    $scope.StatusWaiting = 1;
+    $scope.StatusDownloading = 2;
+    $scope.StatusCombining = 3;
     $scope.StatusSuccess = 4;
     $scope.StatusFailure = 5;
-    $scope.StatusUnstarted = 6;
 
     $scope.alerts = [];
     $scope.tasks = [];

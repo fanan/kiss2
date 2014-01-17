@@ -42,25 +42,22 @@
           <td class="col-md-2 text-center" ng-switch on="task.status">
             <!--{{task.status | statusTexture}}-->
             <div ng-switch-when="0">
-              <progressbar class="progress-striped active" value="100" animate="false" type="warning">等待中</progressbar>
+              <span class="glyphicon glyphicon-stop"></span> 未启动
             </div>
             <div ng-switch-when="1">
-              <progressbar class="progress-striped active" value="task.finished" max="task.total" animate="false" type="success"><span class="text-center" style="color:black">{{task.finished * 100.0 / task.total | number:2}}%</span></progressbar>
+              <progressbar class="progress-striped active" value="100" animate="false" type="warning">等待中</progressbar>
             </div>
             <div ng-switch-when="2">
-            <progressbar class="progress-striped active" value="100" animate="false" type="info">合并中</progressbar>
+              <progressbar class="progress-striped active" value="task.finished" max="task.total" animate="false" type="success"><span class="text-center" style="color:black">{{task.finished * 100.0 / task.total | number:2}}%</span></progressbar>
             </div>
             <div ng-switch-when="3">
-            <progressbar class="progress-striped active" value="100" animate="false" type="info">格式转化中</progressbar>
+            <progressbar class="progress-striped active" value="100" animate="false" type="info">合并中</progressbar>
             </div>
             <div ng-switch-when="4">
               <span class="glyphicon glyphicon-ok-sign"></span> 已完成
             </div>
             <div ng-switch-when="5">
               <span class="glyphicon glyphicon-warning-sign"></span> 有错误发生
-            </div>
-            <div ng-switch-when="6">
-              <span class="glyphicon glyphicon-stop"></span> 未启动
             </div>
             <div ng-switch-default>
               <span class="glyphicon glyphicon-question-sign"></span> 未知状态
@@ -104,15 +101,14 @@
             <li>等待</li>
             <li>下载</li>
             <li>合并</li>
-            <li>格式转换</li>
             <li>成功(失败)</li>
           </ul>
 </li>
             <li>
-          你可以在"未开始"或者"失败"的时候来重新启动该任务,可以在"等待"或者"下载"的时候来取消该任务.删除仅仅表示删除任务本身,并不会删除已经下载合并的视频.对于"合并中,格式转换中"两种状态的任务,暂时不开放任何操作权限.
+          你可以在"未开始"或者"失败"的时候来重新启动该任务,可以在"等待"或者"下载"的时候来取消该任务.删除仅仅表示删除任务本身,并不会删除已经下载合并的视频.对于"合并中"状态的任务,暂时不开放任何操作权限.
 </li>
 <li>
-由于sohu视频每次解析给出的下载地址都会变化,暂时不支持断点续传,当有错误发生时(包括用户主动取消),临时文件将自动清除.如果下载合并格式转换成功,文件将会自动移动到iTunes视频目录,下次启动iTunes时会自动添加.
+由于sohu视频每次解析给出的下载地址都会变化,暂时不支持断点续传,当有错误发生时(包括用户主动取消),临时文件将自动清除.如果下载合并成功,文件将会自动移动到iTunes视频目录,下次启动iTunes时会自动添加.
    </li>  
    
    <li>

@@ -1,10 +1,12 @@
 package main
 
 import (
+    "bytes"
     "io"
     "log"
     "net/http"
     "os"
+    "os/exec"
 )
 
 type Clip struct {
@@ -19,53 +21,54 @@ type Clip struct {
     logger     *log.Logger
 }
 
-func (c *Clip) SetInfo(info interface{}) {
-    c.info = info
+func (self *Clip) SetInfo(info interface{}) {
+    self.info = info
 }
 
-func (c *Clip) GetInfo() interface{} {
-    return c.info
+func (self *Clip) GetInfo() interface{} {
+    return self.info
 }
 
-func (c *Clip) SetOutput(w string) {
-    c.output = w
+func (self *Clip) SetOutput(w string) {
+    self.output = w
 }
 
-func (c *Clip) download() error {
+func (self *Clip) download() error {
     var err error
     defer func() {
-        close(c.chQuit)
-        close(c.chProgress)
+        close(self.chQuit)
+        close(self.chProgress)
     }()
     // init channels
-    c.chQuit = make(chan bool)
-    c.chProgress = make(chan chan Progress)
+    self.chQuit = make(chan bool)
+    self.chProgress = make(chan chan Progress)
 
     buf := make([]byte, 1024*4)
     var resp *http.Response
-    c.logger.Printf("clip start parsing")
-    c.fetchUrl, err = c.parser.Parse()
+    self.logger.Printf("clip start parsing")
+    self.fetchUrl, err = self.parser.Parse()
     if err != nil {
-        c.logger.Printf("clip parsing error: %s", err.Error())
+        self.logger.Printf("clip parsing error: %s", err.Error())
         return err
     }
 
-    c.logger.Printf("clip parsing finished, got url: %s", c.fetchUrl)
-    c.logger.Println("clip start downloading")
-    resp, err = http.Get(c.fetchUrl)
+    self.logger.Printf("clip parsing finished, got url: %s", self.fetchUrl)
+    self.logger.Println("clip start downloading")
+    resp, err = http.Get(self.fetchUrl)
     if err != nil {
-        c.logger.Printf("clip download error:%s", err.Error())
+        self.logger.Printf("clip download error:%s", err.Error())
         return err
     }
 
-    c.total = resp.ContentLength
+    self.logger.Printf("clip length adjust: %d->%d", self.total, resp.ContentLength)
+    self.total = resp.ContentLength
 
     defer resp.Body.Close()
 
-    c.logger.Printf("save to file: %s", c.output)
-    fp, err := os.Create(c.output)
+    self.logger.Printf("save to file: %s", self.output)
+    fp, err := os.Create(self.output)
     if err != nil {
-        c.logger.Printf("save error: %s", err.Error())
+        self.logger.Printf("save error: %s", err.Error())
         return err
     }
 
@@ -74,12 +77,12 @@ func (c *Clip) download() error {
 io_loop:
     for {
         select {
-        case <-c.chQuit:
+        case <-self.chQuit:
             err = ErrDownloadCancelled
-            c.logger.Printf("downloading error: %s", err.Error())
+            self.logger.Printf("downloading error: %s", err.Error())
             break io_loop
-        case stCh := <-c.chProgress:
-            p := Progress{Total: c.total, Finished: c.finished}
+        case stCh := <-self.chProgress:
+            p := Progress{Total: self.total, Finished: self.finished}
             stCh <- p
         default:
             nr, er := resp.Body.Read(buf)
@@ -87,24 +90,24 @@ io_loop:
                 nw, ew := fp.Write(buf[0:nr])
                 if ew != nil {
                     err = ew
-                    c.logger.Printf("downloading error: %s", err.Error())
+                    self.logger.Printf("downloading error: %s", err.Error())
                     return err
                 }
                 if nw != nr {
                     err = ErrDownloadIO
-                    c.logger.Printf("downloading error: %s", err.Error())
+                    self.logger.Printf("downloading error: %s", err.Error())
                     return err
                 }
-                c.finished += int64(nr)
+                self.finished += int64(nr)
             }
             if er == io.EOF {
                 err = nil
-                c.logger.Printf("downloading finished: meet EOF")
+                self.logger.Printf("downloading finished: meet EOF")
                 break io_loop
             }
             if er != nil {
                 err = er
-                c.logger.Printf("downloading error: %s", err.Error())
+                self.logger.Printf("downloading error: %s", err.Error())
                 break io_loop
             }
         }
@@ -130,7 +133,7 @@ func (self *Clip) Download(ch chan error) {
     return
 }
 
-func (c *Clip) Cancel() error {
+func (self *Clip) Cancel() error {
     var err error
     defer func() {
         ec := recover()
@@ -138,20 +141,53 @@ func (c *Clip) Cancel() error {
             err = ErrChannelClosed
         }
     }()
-    c.chQuit <- true
+    self.chQuit <- true
     return err
 }
 
-func (c *Clip) Progress() (st Progress, err error) {
+func (self *Clip) Progress() (st Progress, err error) {
     defer func() {
         ec := recover()
         if ec != nil {
-            st.Finished, st.Total = c.finished, c.total
+            st.Finished, st.Total = self.finished, self.total
             err = ErrChannelClosed
         }
     }()
     ch := make(chan Progress)
-    c.chProgress <- ch
+    self.chProgress <- ch
     st = <-ch
     return st, err
+}
+
+func (self *Clip) ConvertToTs() error {
+    //cmd ffmpeg -i input_filename -vcodec copy/h264 -acodec copy/acc -bsf:v h264_mp4toannexb -f mpegts output_filename
+    vr, ar, _, err := detectVideoInfo(self.output)
+    if err != nil {
+        return err
+    }
+    var vc, ac string
+    if ar {
+        ac = FF_CODEC_AAC
+    } else {
+        ac = FF_CODEC_COPY
+    }
+    if vr {
+        vc = FF_CODEC_H264
+    } else {
+        vc = FF_CODEC_COPY
+    }
+    cmd := exec.Command("ffmpeg", "-i", self.output, "-vcodec", vc, "-acodec", ac, "-bsf:v", "h264_mp4toannexb", "-f", "mpegts", self.output+".ts")
+    stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
+    cmd.Stderr = stderr
+    cmd.Stdout = stdout
+    err = cmd.Run()
+    if err != nil {
+        self.logger.Println(stderr.String())
+        return err
+    }
+    return nil
+}
+
+func (self *Clip) remove() error {
+    return os.Remove(self.output)
 }

@@ -1,13 +1,13 @@
 package main
 
 import (
-    "bytes"
     "fmt"
-    "io/ioutil"
     "log"
+    "net/url"
     "os"
-    "os/exec"
     "path"
+    "strconv"
+    "strings"
 )
 
 type Video struct {
@@ -36,9 +36,18 @@ func (self *Video) Info() *VideoInfo {
 func (self *Video) Parse() error {
     self.logger.Println("start parsing")
     // init parser
+    u, err := url.Parse(self.Url)
+    if err != nil {
+        return err
+    }
     if self.parser == nil {
-        // TODO: add youku and sohu
-        self.parser = new(SohuVideoParser)
+        if strings.Contains(strings.ToLower(u.Host), "sohu") {
+            self.parser = new(SohuVideoParser)
+        } else if strings.Contains(strings.ToLower(u.Host), "youku") {
+            self.parser = new(YoukuVideoParser)
+        } else {
+            return ErrSiteUnsupported
+        }
         self.parser.SetOwner(self)
     }
 
@@ -80,7 +89,7 @@ func (self *Video) Download() {
 
     //start downloading
     for idx, clip := range self.clips {
-        fn := fmt.Sprintf("%s.part-%d", path.Join(Temp, self.Name), idx)
+        fn := fmt.Sprintf("%s.part-%d", path.Join(Temp, "kiss_download-"+strconv.Itoa(self.Id)), idx) //clip's filename contain's no '|'
         self.logger.Printf("start downloading: %s, %d/%d", fn, idx, self.nClips)
         clip.SetOutput(fn)
         chFi := make(chan error)
@@ -161,54 +170,65 @@ func (self *Video) Progress() (ds Progress, err error) {
 }
 
 func (self *Video) Combine() error {
-    self.logger.Println("start combining")
-    var err error
-    out := fmt.Sprintf("%s.combined.mp4", path.Join(Temp, self.Name))
-    os.Remove(out)
-    if self.nClips != 1 {
-        fp, err := ioutil.TempFile(os.TempDir(), "ffmpeg-")
+    output := path.Join(Output, self.Name+".mp4")
+    os.Remove(output)
+    if self.nClips == 1 {
+        self.logger.Println("only one clip, need not combine")
+        vr, ar, isMp4, err := detectVideoInfo(self.clips[0].output)
         if err != nil {
-            self.err = err
             return err
         }
-        defer os.Remove(fp.Name())
-        s := ""
-        for idx, _ := range self.clips {
-            s += fmt.Sprintf("file '%s.part-%d'\n", path.Join(Temp, self.Name), idx)
-        }
-        _, err = fp.WriteString(s)
-        if err != nil {
-            self.err = err
+        // just rename
+        if isMp4 == true && vr == false && ar == false {
+            self.logger.Printf("renaming: %s->%s", self.clips[0].output, output)
+            err = os.Rename(self.clips[0].output, output)
+            if err != nil {
+                self.logger.Printf("rename error: %s", err.Error())
+            }
             return err
         }
-        fp.Close()
-        cmd := exec.Command("ffmpeg", "-f", "concat", "-i", fp.Name(), "-c", "copy", out)
-        stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
-        cmd.Stdout, cmd.Stderr = stdout, stderr
-        err = cmd.Run()
+        self.logger.Println("reencoding")
+        err = self.clips[0].ConvertToTs()
         if err != nil {
-            self.err = err
-            self.logger.Printf("stdout:%s", stdout.String())
-            self.logger.Printf("stderr:%s", stderr.String())
-            self.logger.Printf("combining error: %s", err.Error())
             return err
         }
-    } else {
-        self.logger.Println("only one clip, need not combine, just rename")
-        err = os.Rename(fmt.Sprintf("%s.part-0", path.Join(Temp, self.Name)), out)
+        self.logger.Println("converting")
+        err = combineTsToMp4(output, self.clips[0].output+".ts")
         if err != nil {
-            self.err = err
-            self.logger.Println("rename error: %s", self.err.Error())
-            return err
+            self.logger.Println("converting error:", err)
         }
+        // remove temporary ts file
+        self.logger.Println("remove temporary ts file")
+        os.Remove(self.clips[0].output + ".ts")
+        // remove clip download file
+        self.logger.Println("remove downloaded file")
+        os.Remove(self.clips[0].output)
+        return err
     }
-    self.logger.Println("combine finished")
-    return nil
-}
 
-func (self *Video) Convert() error {
-    self.logger.Println("convert has not implemented")
-    return nil
+    self.logger.Println("multiple clips, need combining")
+    inputs := make([]string, 0, self.nClips)
+    for _, clip := range self.clips {
+        self.logger.Printf("converting %s to %s", clip.output, clip.output+".ts")
+        err := clip.ConvertToTs()
+        if err != nil {
+            self.logger.Printf("converting error: %s", err.Error())
+            return err
+        }
+        inputs = append(inputs, clip.output+".ts")
+    }
+    self.logger.Println("combining")
+    err := combineTsToMp4(output, inputs...)
+    if err != nil {
+        self.logger.Printf("combining error: %s", err.Error())
+    }
+    for _, clip := range self.clips {
+        self.logger.Printf("remove downloaded file: %s", clip.output)
+        os.Remove(clip.output)
+        self.logger.Printf("remove temporary ts file: %s", clip.output+".ts")
+        os.Remove(clip.output + ".ts")
+    }
+    return err
 }
 
 func (self *Video) Clean() {
@@ -223,7 +243,6 @@ func (self *Video) Clean() {
 
 func (self *Video) Do() {
     self.logger = log.New(os.Stdout, fmt.Sprintf("[video:%d]", self.Id), log.Lshortfile|log.Lmicroseconds)
-    // TODO add clean func after convert implemented
 
     var err error
     self.Parse()
@@ -256,15 +275,6 @@ func (self *Video) Do() {
     self.Status = StatusCombining
     DefaultControlCenter.Save()
     err = self.Combine()
-    if err != nil {
-        self.Status = StatusFailure
-        DefaultControlCenter.Save()
-        return
-    }
-
-    self.Status = StatusConverting
-    DefaultControlCenter.Save()
-    err = self.Convert()
     if err != nil {
         self.Status = StatusFailure
         DefaultControlCenter.Save()

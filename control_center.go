@@ -128,7 +128,7 @@ func (self *ControlCenter) Init() error {
     for _, vi := range info.Videos {
         self.videos[vi.Id] = vi.Video()
         switch vi.Status {
-        case StatusCombining, StatusConverting, StatusDownloading:
+        case StatusCombining, StatusDownloading:
             self.videos[vi.Id].Status = StatusFailure
         case StatusWaiting:
             self.videos[vi.Id].Status = StatusUnstarted

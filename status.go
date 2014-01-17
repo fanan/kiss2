@@ -6,7 +6,6 @@ const (
     StatusWaiting
     StatusDownloading
     StatusCombining
-    StatusConverting
     StatusSuccess
     StatusFailure
 )
