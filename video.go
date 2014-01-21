@@ -2,12 +2,14 @@ package main
 
 import (
     "fmt"
+    "io"
     "log"
     "net/url"
     "os"
     "path"
     "strconv"
     "strings"
+    "time"
 )
 
 type Video struct {
@@ -33,11 +35,23 @@ func (self *Video) Info() *VideoInfo {
     return &VideoInfo{Status: self.Status, Err: msg, Url: self.Url, Name: self.Name, Id: self.Id}
 }
 
+func (self *Video) ProgressInfo() *VideoProgress {
+    if self.Status != StatusDownloading {
+        return nil
+    }
+    pg, err := self.Progress()
+    if err != nil {
+        return nil
+    }
+    return &VideoProgress{Status: self.Status, Err: "", Url: self.Url, Name: self.Name, Id: self.Id, Total: pg.Total, Finished: pg.Finished}
+}
+
 func (self *Video) Parse() error {
     self.logger.Println("start parsing")
     // init parser
     u, err := url.Parse(self.Url)
     if err != nil {
+        self.err = err
         return err
     }
     if self.parser == nil {
@@ -46,6 +60,7 @@ func (self *Video) Parse() error {
         } else if strings.Contains(strings.ToLower(u.Host), "youku") {
             self.parser = new(YoukuVideoParser)
         } else {
+            self.err = ErrSiteUnsupported
             return ErrSiteUnsupported
         }
         self.parser.SetOwner(self)
@@ -70,6 +85,7 @@ func (self *Video) Download() {
         close(self.chErr)
     }()
     self.logger.Println("waiting the download queue")
+    NewsRoom.Pub(self.Info(), TOPIC_WAIT)
     self.chProgress = make(chan chan Progress)
     self.chQuit = make(chan bool)
     self.chErr = make(chan error)
@@ -86,6 +102,11 @@ func (self *Video) Download() {
         self.logger.Println("cancelled while waiting")
         return
     }
+
+    defer func() {
+        self.logger.Printf("releasing the download queue")
+        <-Queue
+    }()
 
     //start downloading
     for idx, clip := range self.clips {
@@ -242,9 +263,17 @@ func (self *Video) Clean() {
 }
 
 func (self *Video) Do() {
-    self.logger = log.New(os.Stdout, fmt.Sprintf("[video:%d]", self.Id), log.Lshortfile|log.Lmicroseconds)
-
     var err error
+    var w io.Writer
+    logFp, err := os.OpenFile(path.Join(Log, fmt.Sprintf("kiss-%d.log", self.Id)), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+    if err != nil {
+        w = os.Stdout
+    } else {
+        w = logFp
+        defer logFp.Close()
+    }
+    self.logger = log.New(w, fmt.Sprintf("[video:%d]", self.Id), log.Lshortfile|log.Lmicroseconds)
+
     self.Parse()
 
     // update video name, etc
@@ -253,35 +282,63 @@ func (self *Video) Do() {
     if self.err != nil {
         self.Status = StatusFailure
         DefaultControlCenter.Save()
+        NewsRoom.Pub(self.Info(), TOPIC_FAIL)
         return
     }
 
     go self.Download()
 
+    //inject progress service
+    chFinished := make(chan bool)
+    go func(ch chan bool) {
+    monitor_loop:
+        for {
+            time.Sleep(time.Second)
+            select {
+            case <-ch:
+                self.logger.Printf("monitor goroutine: quit signal got, exiting")
+                break monitor_loop
+            default:
+                NewsRoom.Pub(self.ProgressInfo(), TOPIC_DOWNLOAD)
+            }
+        }
+        self.logger.Printf("monitor goroutine exited")
+    }(chFinished)
+
     self.Status = StatusWaiting
     DefaultControlCenter.Save()
 
     err = <-self.chErr
+    self.logger.Printf("ok, video download finished or an error occurred during downloading")
+    self.logger.Printf("sending signal to monitor goroutine")
+    chFinished <- true
+    self.logger.Printf("monitor goroutine signal sent")
+    close(chFinished)
     if err != nil {
         if err == ErrDownloadCancelled {
             self.Status = StatusUnstarted
+            NewsRoom.Pub(self.Info(), TOPIC_CANCEL)
         } else {
             self.Status = StatusFailure
+            NewsRoom.Pub(self.Info(), TOPIC_FAIL)
         }
         DefaultControlCenter.Save()
         return
     }
 
     self.Status = StatusCombining
+    NewsRoom.Pub(self.Info(), TOPIC_COMBINE)
     DefaultControlCenter.Save()
     err = self.Combine()
     if err != nil {
         self.Status = StatusFailure
+        NewsRoom.Pub(self.Info(), TOPIC_FAIL)
         DefaultControlCenter.Save()
         return
     }
 
     self.Status = StatusSuccess
+    NewsRoom.Pub(self.Info(), TOPIC_SUCCESS)
     DefaultControlCenter.Save()
 
     self.logger.Println("video hanled")

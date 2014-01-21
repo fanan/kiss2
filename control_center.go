@@ -3,6 +3,7 @@ package main
 import (
     "encoding/json"
     "errors"
+    "fmt"
     "os"
     "sync"
 )
@@ -30,12 +31,14 @@ func (self *ControlCenter) New(url string) (*Video, error) {
     defer self.Unlock()
     for _, video := range self.videos {
         if video.Url == url {
+            NewsRoom.Pub(fmt.Sprintf("%s duplicated!", url), TOPIC_ERROR)
             return nil, ErrUrlDuplicated
         }
     }
     v := &Video{Url: url, Id: self.nextId}
     self.videos[self.nextId] = v
     self.nextId++
+    NewsRoom.Pub(v.Info(), TOPIC_NEW)
     go v.Do()
     return v, nil
 }
@@ -45,6 +48,7 @@ func (self *ControlCenter) Delete(id int) {
     defer self.Unlock()
     _, ok := self.videos[id]
     if ok {
+        NewsRoom.Pub(id, TOPIC_DELETE)
         delete(self.videos, id)
     }
     return
@@ -55,6 +59,7 @@ func (self *ControlCenter) Archive() {
     defer self.Unlock()
     for id, video := range self.videos {
         if video.Status == StatusSuccess {
+            NewsRoom.Pub(id, TOPIC_DELETE)
             delete(self.videos, id)
         }
     }

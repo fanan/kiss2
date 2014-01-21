@@ -1,6 +1,7 @@
 package main
 
 import (
+    "code.google.com/p/go.net/websocket"
     "flag"
     "github.com/codegangsta/martini"
     "github.com/codegangsta/martini-contrib/render"
@@ -35,7 +36,8 @@ func main() {
     router.Post("/api/tasks/:id", GetTask(), TaskStart)
     router.Put("/api/tasks/:id", GetTask(), TaskCancel)
     router.Delete("/api/tasks/:id", GetTask(), TaskDelete)
-
+    router.Get("/api/push", websocket.Handler(Push).ServeHTTP)
+    router.Get("/api/monitor", websocket.Handler(Monitor).ServeHTTP)
     m.Action(router.Handle)
     m.Run()
 }

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html ng-app="app">
+<head>
+    <title></title>
+    <meta charset="utf-8" />
+    <script src="js/angular.js" type="text/javascript" charset="utf-8"></script>
+</head>
+<body ng-controller="main">
+    <header>
+        
+    </header>
+
+    <button ng-click="task_archive();">archive</button>
+
+    <table border="0" cellspacing="5" cellpadding="5">
+      <tr>
+        <th>名称</th>
+        <th>状态</th>
+        <th>操作</th>
+      </tr>
+      <tr ng-repeat="task in tasks">
+        <td>
+          <a href="{{task.url}}">
+            {{ task.name || task.url }}
+          </a>
+        </td>
+        <td>
+          <span ng-show="task.status == status_unstarted">未开始</span>
+          <span ng-show="task.status == status_failure">有错误发生</span>
+          <span ng-show="task.status == status_success">成功</span>
+          <span ng-show="task.status == status_unstarted">等待中</span>
+          <span ng-show="task.status == status_downloading">下载中</span>
+          <span ng-show="task.status == status_combining">合并中</span>
+        </td>
+        <td>
+          <button ng-click="task_delete(task.id);" ng-show="task.status == status_unstarted || task.status == status_failure || task.status == status_success">delete</button>
+          <button ng-click="task_cancel(task.id)" ng-show="task.status == status_downloading || task.status == status_waiting">cancel</button>
+          <button ng-click="task_start(task.id)" ng-show="task.status == status_unstarted || task.status == status_failure">start</button>
+        </td>
+      </tr>
+    </table>
+
+
+    <footer>
+      Proudly use Golang and AngularJs
+    </footer>
+    <script src="js/app.js" type="text/javascript" charset="utf-8"></script>
+</body>
+</html>

@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html ng-app="TaskAdmin">
+<html ng-app="app">
 <head>
     <title> 胖子下载机管理页面 </title>
     <meta charset="utf-8" />
     <link rel="stylesheet" href="css/bootstrap.min.css" type="text/css" media="screen" title="no title" charset="utf-8">
     <script src="js/angular.js" type="text/javascript" charset="utf-8"></script>
     <script src="js/ui-bootstrap-tpls-0.9.0.min.js" type="text/javascript" charset="utf-10"></script>
-    <script src="js/admin.js" type="text/javascript" charset="utf-8"></script>
+    <script src="js/app.js" type="text/javascript" charset="utf-8"></script>
 </head>
 
 <body>
@@ -16,7 +16,7 @@
         从前有个胖子 后来他瘦了
       </div>
     </header>
-    <div class="container row" ng-controller="TasksListController">
+    <div class="container row" ng-controller="main">
 
       <div id="operations" class="col-md-7 col-md-offset-1">
       <!--timeout: <input type="number" ng-model="fps">-->
@@ -29,8 +29,8 @@
       <table class="table table-hover">
         <thead>
         <tr>
-          <th class="col-md-3 text-center" ng-click="sortByName()">名称</th>
-          <th class="col-md-2 text-center" ng-click="sortByStatus()">状态</th>
+          <th class="col-md-3 text-center" ng-click="sort_by_name();">名称</th>
+          <th class="col-md-2 text-center" ng-click="sort_by_status();">状态</th>
           <th class="col-md-2 text-center">可选操作</th>
         </tr>
         </thead>
@@ -41,40 +41,39 @@
           </td>
           <td class="col-md-2 text-center" ng-switch on="task.status">
             <!--{{task.status | statusTexture}}-->
-            <div ng-switch-when="0">
+            <div ng-if="task.status == status_unstarted">
               <span class="glyphicon glyphicon-stop"></span> 未启动
             </div>
-            <div ng-switch-when="1">
+            <div ng-if="task.status == status_waiting">
               <progressbar class="progress-striped active" value="100" animate="false" type="warning">等待中</progressbar>
             </div>
-            <div ng-switch-when="2">
+            <div ng-if="task.status == status_downloading">
               <progressbar class="progress-striped active" value="task.finished" max="task.total" animate="false" type="success"><span class="text-center" style="color:black">{{task.finished * 100.0 / task.total | number:2}}%</span></progressbar>
             </div>
-            <div ng-switch-when="3">
+            <div ng-if="task.status == status_combining">
             <progressbar class="progress-striped active" value="100" animate="false" type="info">合并中</progressbar>
             </div>
-            <div ng-switch-when="4">
+            <div ng-if="task.status == status_success">
               <span class="glyphicon glyphicon-ok-sign"></span> 已完成
             </div>
-            <div ng-switch-when="5">
+            <div ng-if="task.status == status_failure">
               <span class="glyphicon glyphicon-warning-sign"></span> 有错误发生
-            </div>
-            <div ng-switch-default>
-              <span class="glyphicon glyphicon-question-sign"></span> 未知状态
             </div>
           </td>
           <td class="col-md-2 text-center">
-            <button class="btn btn-success btn-sm" ng-if="task.status >= StatusSuccess " ng-click="deleteTask(task)">
+
+            <button class="btn btn-success btn-sm" ng-click="task_delete(task.id);" ng-if="task.status == status_unstarted || task.status == status_failure || task.status == status_success">
               <span class="glyphicon glyphicon-remove"></span> 
             </button>
 
-            <button class="btn btn-success btn-sm" ng-if="task.status == StatusWaiting || task.status == StatusDownloading " ng-click="cancelTask(task)">
+            <button class="btn btn-success btn-sm" ng-click="task_cancel(task.id);" ng-if="task.status == status_downloading || task.status == status_waiting">
               <span class="glyphicon glyphicon-stop"></span> 
             </button>
 
-            <button class="btn btn-success btn-sm" ng-if="task.status == StatusFailure || task.status == StatusUnstarted" ng-click="downloadTask(task)">
+            <button class="btn btn-success btn-sm" ng-click="task_start(task.id);" ng-if="task.status == status_unstarted || task.status == status_failure">
               <span class="glyphicon glyphicon-play"></span> 
             </button>
+
          </td>
         </tr>
         </tbody>
@@ -86,40 +85,26 @@
     <!--end of operations area-->
 
     <div id="notices" class="col-md-3 col-md-offset-1">
-      <div id="instructions" class="row text-primary">
-        <button class="btn btn-info btn-sm" ng-click="hideInstructions = !hideInstructions">使用说明</button>
-        <button class="btn btn-info btn-sm" ng-click="deleteAllSuccessfulTasks()">归档</button>
-        <div collapse="hideInstructions">
-          <ul>
-            <li>
-          本页面用来管理下载任务.
-          </li>
-            <li>
-          一个任务完整的生命周期包括:
-          <ul>
-            <li>未开始</li>
-            <li>等待</li>
-            <li>下载</li>
-            <li>合并</li>
-            <li>成功(失败)</li>
-          </ul>
-</li>
-            <li>
-          你可以在"未开始"或者"失败"的时候来重新启动该任务,可以在"等待"或者"下载"的时候来取消该任务.删除仅仅表示删除任务本身,并不会删除已经下载合并的视频.对于"合并中"状态的任务,暂时不开放任何操作权限.
-</li>
-<li>
-由于sohu视频每次解析给出的下载地址都会变化,暂时不支持断点续传,当有错误发生时(包括用户主动取消),临时文件将自动清除.如果下载合并成功,文件将会自动移动到iTunes视频目录,下次启动iTunes时会自动添加.
-   </li>  
-   
-   <li>
-          本页面会自动刷新,在此处设置刷新间隔:
-          <input type="number" ng-model="fps" min="1" placeholder="在此处输入刷新间隔时间">
-</li>
-            <li>
-            <li> 如果有任务下载完成或者失败,将会有对应的通知出现在下方的通知栏.  </li>
-          左侧的搜索框是用来搜索现有任务的.
-          </li>
 
+      <div id="instructions" class="row text-primary">
+        <button class="btn btn-info btn-sm" ng-click="hide_instruction = !hide_instruction">使用说明</button>
+        <button class="btn btn-info btn-sm" ng-click="task_archive();">归档</button>
+        <div collapse="hide_instruction">
+          <ul>
+            <li> 本页面用来管理下载任务.  </li>
+            <li> 一个任务完整的生命周期包括:
+              <ul>
+                <li>未开始</li>
+                <li>等待</li>
+                <li>下载</li>
+                <li>合并</li>
+                <li>成功(失败)</li>
+              </ul>
+            </li>
+            <li> 你可以在"未开始"或者"失败"的时候来重新启动该任务,可以在"等待"或者"下载"的时候来取消该任务.删除仅仅表示删除任务本身,并不会删除已经下载合并的视频.对于"合并中"状态的任务,暂时不开放任何操作权限.  </li>
+            <li> 由于sohu视频每次解析给出的下载地址都会变化,暂时不支持断点续传,当有错误发生时(包括用户主动取消),临时文件将自动清除.如果下载合并成功,文件将会自动移动到iTunes视频目录,下次启动iTunes时会自动添加.  </li>  
+            <li> 如果有任务下载完成或者失败,将会有对应的通知出现在下方的通知栏.  </li>
+            <li> 左侧的搜索框是用来搜索现有任务的.  </li>
           </ul>
         </div>
       </div>
@@ -128,11 +113,11 @@
       <div id="alerts" class="row">
         <div class="row" ng-if="alerts.length > 0">
           <hr>
-          <button class="btn btn-info btn-sm" ng-click="removeAllAlerts()">清除所有通知</button>
+          <button class="btn btn-info btn-sm" ng-click="alerts_clear_all()">清除所有通知</button>
           <hr>
         </div>
         <div class="row">
-          <alert ng-repeat="alert in alerts" type="alert.type" close="closeAlert($index)">
+          <alert ng-repeat="alert in alerts" type="alert.type" close="alerts_close($index)">
             {{alert.msg}}
           </alert>
         </div>

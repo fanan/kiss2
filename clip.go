@@ -7,6 +7,7 @@ import (
     "net/http"
     "os"
     "os/exec"
+    "time"
 )
 
 type Clip struct {
@@ -74,6 +75,8 @@ func (self *Clip) download() error {
 
     defer fp.Close()
 
+    lastZero := false
+    var lastTime time.Time
 io_loop:
     for {
         select {
@@ -87,6 +90,7 @@ io_loop:
         default:
             nr, er := resp.Body.Read(buf)
             if nr != 0 {
+                lastZero = false
                 nw, ew := fp.Write(buf[0:nr])
                 if ew != nil {
                     err = ew
@@ -99,6 +103,16 @@ io_loop:
                     return err
                 }
                 self.finished += int64(nr)
+            }
+            if lastZero {
+                if time.Since(lastTime) > time.Minute*3 {
+                    self.logger.Printf("received nothing in last 3 minutes, network error?")
+                    err = ErrDownloadIO
+                    return err
+                }
+            } else {
+                lastZero = true
+                lastTime = time.Now()
             }
             if er == io.EOF {
                 err = nil
