@@ -32,12 +32,18 @@ func main() {
     router.Get("/api/tasks", TasksStatus)
     router.Post("/api/tasks", TasksNew)
     router.Delete("/api/tasks", TasksArchive)
+
     router.Get("/api/tasks/:id", GetTask(), TaskStatus)
     router.Post("/api/tasks/:id", GetTask(), TaskStart)
     router.Put("/api/tasks/:id", GetTask(), TaskCancel)
     router.Delete("/api/tasks/:id", GetTask(), TaskDelete)
+
     router.Get("/api/push", websocket.Handler(Push).ServeHTTP)
     router.Get("/api/monitor", websocket.Handler(Monitor).ServeHTTP)
+
+    router.Get("/api/config", ConfigGet)
+    router.Put("/api/config", ConfigUpdate)
+
     m.Action(router.Handle)
     m.Run()
 }

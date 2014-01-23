@@ -25,6 +25,16 @@ type Config struct {
     Log         string `json:"log"`
 }
 
+func ConfigDump(c *Config, fn string) error {
+    fp, err := os.Create(fn)
+    if err != nil {
+        return err
+    }
+    defer fp.Close()
+    err = json.NewEncoder(fp).Encode(c)
+    return err
+}
+
 func initConfig(fn string) error {
     c, err := ioutil.ReadFile(fn)
     if err != nil {

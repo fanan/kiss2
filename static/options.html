@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html ng-app="option_app">
+<head>
+    <title>options page</title>
+    <meta charset="utf-8" />
+    <script src="js/angular.js" type="text/javascript" charset="utf-8"></script>
+    <script src="js/option.js" type="text/javascript" charset="utf-8"></script>
+</head>
+<body ng-controller="option_controller">
+    <header>
+        
+    </header>
+    <form>
+
+      <label for="concurrency">concurrency</label>
+      <input type="number" ng-model="config.concurrency">
+      <br>
+      
+      <label for="lives">lives</label>
+      <input type="number" ng-model="config.lives">
+      <br>
+
+      <label for="temp">temp</label>
+      <input type="text" ng-model="config.temp">
+      <br>
+
+      <label for="output">output</label>
+      <input type="text" ng-model="config.output">
+      <br>
+
+      <label for="db">db</label>
+      <input type="text" ng-model="config.db">
+      <br>
+
+      <label for="log">log</label>
+      <input type="text" ng-model="config.log">
+      <br>
+
+      <button ng-click="update(config)">submit</button>
+      <button ng-click="get_current_config()">reset</button>
+
+    </form>
+
+    <footer>
+        
+    </footer>
+</body>
+</html>

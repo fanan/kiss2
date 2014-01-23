@@ -1,11 +1,14 @@
 package main
 
 import (
+    "encoding/json"
     "fmt"
     "github.com/codegangsta/martini"
     "github.com/codegangsta/martini-contrib/render"
     "io/ioutil"
+    "log"
     "net/http"
+    "os"
     "strconv"
 )
 
@@ -95,5 +98,36 @@ func TaskStart(v *Video, r render.Render) {
 
 func TaskDelete(v *Video, r render.Render) {
     DefaultControlCenter.Delete(v.Id)
+    r.JSON(http.StatusOK, "ok")
+}
+
+func ConfigGet(w http.ResponseWriter) {
+    //currentConfig := Config{Concurrency: Concurrency, Lives: Lives, Temp: Temp, Output: Output, Db: Db, Log: Log}
+    c, err := ioutil.ReadFile(*conf)
+    if err != nil {
+        panic(err)
+    }
+    w.Header().Set("Content-Type", "application/json")
+    //r.JSON(http.StatusOK, string(c))
+    w.Write(c)
+}
+
+func ConfigUpdate(req *http.Request, r render.Render) {
+    defer req.Body.Close()
+    c, err := ioutil.ReadAll(req.Body)
+    if err != nil {
+        panic(err)
+    }
+    var config Config
+    logger := log.New(os.Stdout, "[config_update:]", log.LstdFlags|log.Lshortfile)
+    logger.Println(string(c))
+    err = json.Unmarshal(c, &config)
+    if err != nil {
+        panic(err)
+    }
+    err = ConfigDump(&config, *conf)
+    if err != nil {
+        panic(err)
+    }
     r.JSON(http.StatusOK, "ok")
 }

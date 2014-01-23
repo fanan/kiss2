@@ -1,12 +1,21 @@
 package main
 
 import (
+    "bufio"
     "bytes"
+    "fmt"
     "io"
+    "io/ioutil"
     "log"
+    "net"
     "net/http"
+    "net/http/httputil"
+    "net/textproto"
+    "net/url"
     "os"
     "os/exec"
+    "strconv"
+    "strings"
     "time"
 )
 
@@ -44,8 +53,6 @@ func (self *Clip) download() error {
     self.chQuit = make(chan bool)
     self.chProgress = make(chan chan Progress)
 
-    buf := make([]byte, 1024*4)
-    var resp *http.Response
     self.logger.Printf("clip start parsing")
     self.fetchUrl, err = self.parser.Parse()
     if err != nil {
@@ -53,80 +60,131 @@ func (self *Clip) download() error {
         return err
     }
 
-    self.logger.Printf("clip parsing finished, got url: %s", self.fetchUrl)
-    self.logger.Println("clip start downloading")
-    resp, err = http.Get(self.fetchUrl)
+    var conn net.Conn
+    var total int64
+    var br *bufio.Reader
+    redirects := 10
+redirects_loop:
+    for redirects > 0 {
+
+        req, err := http.NewRequest("GET", self.fetchUrl, nil)
+        if err != nil {
+            return err
+        }
+
+        fetchUrl, err := url.Parse(self.fetchUrl)
+        if err != nil {
+            return err
+        }
+
+        conn, err = net.DialTimeout("tcp", fmt.Sprintf("%s:80", fetchUrl.Host), time.Second*10)
+        if err != nil {
+            return err
+        }
+
+        br = bufio.NewReader(conn)
+        tr := textproto.NewReader(br)
+        reqDump, err := httputil.DumpRequest(req, false)
+        if err != nil {
+            return err
+        }
+        _, err = conn.Write(reqDump)
+        if err != nil {
+            return err
+        }
+
+        s, err := tr.ReadLine()
+        if err != nil {
+            return err
+        }
+        self.logger.Printf(s)
+        items := strings.SplitN(s, " ", 3)
+        if len(items) != 3 || items[0] != "HTTP/1.1" {
+            return fmt.Errorf("malformed http response")
+        }
+        status, err := strconv.Atoi(items[1])
+        if err != nil {
+            return err
+        }
+        h, err := tr.ReadMIMEHeader()
+        if err != nil {
+            return err
+        }
+        self.logger.Printf("%+v", h)
+        switch status {
+        case http.StatusOK:
+            total, err = strconv.ParseInt(h.Get("Content-Length"), 10, 64)
+            if err != nil {
+                return err
+            }
+            break redirects_loop
+        case http.StatusFound:
+            self.fetchUrl = h.Get("Location")
+            redirects--
+        default:
+            self.logger.Printf("unsupported status %s, %s", items[1], items[2])
+            return ErrDownloadIO
+        }
+    }
+    defer conn.Close()
+    if redirects == 0 {
+        return fmt.Errorf("too many redirects")
+    }
+    self.total = total
+    deadline := time.Now().Add(time.Duration((self.total >> 18)) * time.Second)
+    self.logger.Printf("deadline: %s", deadline.String())
+    conn.SetReadDeadline(deadline)
+    //var total32 int = int(total)
+    saved := make([]byte, total, total)
+    var nCopy, finished int
+    buf, err := br.Peek(br.Buffered())
     if err != nil {
-        self.logger.Printf("clip download error:%s", err.Error())
         return err
     }
-
-    self.logger.Printf("clip length adjust: %d->%d", self.total, resp.ContentLength)
-    self.total = resp.ContentLength
-
-    defer resp.Body.Close()
-
-    self.logger.Printf("save to file: %s", self.output)
-    fp, err := os.Create(self.output)
-    if err != nil {
-        self.logger.Printf("save error: %s", err.Error())
-        return err
+    nCopy = copy(saved[0:], buf)
+    if nCopy != br.Buffered() {
+        return ErrDownloadIO
     }
-
-    defer fp.Close()
-
-    lastZero := false
-    var lastTime time.Time
+    finished += nCopy
+    self.logger.Printf("start downloading: %s", self.fetchUrl)
 io_loop:
     for {
         select {
         case <-self.chQuit:
             err = ErrDownloadCancelled
-            self.logger.Printf("downloading error: %s", err.Error())
             break io_loop
         case stCh := <-self.chProgress:
-            p := Progress{Total: self.total, Finished: self.finished}
+            p := Progress{Total: self.total, Finished: int64(finished)}
             stCh <- p
         default:
-            nr, er := resp.Body.Read(buf)
-            if nr != 0 {
-                lastZero = false
-                nw, ew := fp.Write(buf[0:nr])
-                if ew != nil {
-                    err = ew
-                    self.logger.Printf("downloading error: %s", err.Error())
-                    return err
-                }
-                if nw != nr {
-                    err = ErrDownloadIO
-                    self.logger.Printf("downloading error: %s", err.Error())
-                    return err
-                }
-                self.finished += int64(nr)
-            }
-            if lastZero {
-                if time.Since(lastTime) > time.Minute*3 {
-                    self.logger.Printf("received nothing in last 3 minutes, network error?")
-                    err = ErrDownloadIO
-                    return err
-                }
-            } else {
-                lastZero = true
-                lastTime = time.Now()
-            }
-            if er == io.EOF {
+            nCopy, err = conn.Read(saved[finished:])
+            finished += nCopy
+            //if finished == total32 {
+            //self.logger.Printf("meet eof")
+            //err = nil
+            //break io_loop
+            //}
+            //if finished > total32 {
+            //err = ErrDownloadIO
+            //self.logger.Printf("finished > total")
+            //break io_loop
+            //}
+            if err == io.EOF {
+                self.logger.Printf("meet eof2")
                 err = nil
-                self.logger.Printf("downloading finished: meet EOF")
                 break io_loop
             }
-            if er != nil {
-                err = er
-                self.logger.Printf("downloading error: %s", err.Error())
+            if err != nil {
                 break io_loop
             }
         }
     }
+    if err != nil {
+        return err
+    }
 
+    self.logger.Println("writing data to file")
+    err = ioutil.WriteFile(self.output, saved, 0644)
     return err
 }
 
