@@ -1,8 +1,1 @@
-{
-  "concurrency": 3,
-  "lives": 3,
-  "temp": "/tmp",
-  "output": "/Users/fatman/Movies",
-  "db": "db.json",
-  "log": "logs"
-}
+{"concurrency":3,"lives":5,"temp":"/tmp","output":"/Users/fatman/Movies","db":"db.json","log":"logs"}

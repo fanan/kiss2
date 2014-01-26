@@ -176,3 +176,4 @@ app.controller("main", ["$http", "$log", "$scope", "PushService", "Tasks", funct
 
     PushService.connect();
 }]);
+
