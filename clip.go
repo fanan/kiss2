@@ -131,7 +131,7 @@ redirects_loop:
         return fmt.Errorf("too many redirects")
     }
     self.total = total
-    deadline := time.Now().Add(time.Duration((self.total >> 18)) * time.Second)
+    deadline := time.Now().Add(time.Duration((self.total >> 17)) * time.Second)
     self.logger.Printf("deadline: %s", deadline.String())
     conn.SetReadDeadline(deadline)
     //var total32 int = int(total)

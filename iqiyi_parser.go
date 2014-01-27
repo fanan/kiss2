@@ -174,9 +174,8 @@ func (self *IQiYiVideoParser) parseClips() (err error) {
     if n < 1 {
         return ErrParseBadFormat
     }
-    //fuck quality order 10 > 5 > 4 > 3 > 2 > 1 > 96 > 0
+    //quality order 10 > 5 > 4 > 3 > 2 > 1 > 96 > 0
     var idx int
-    //var v iqyVideo
     var found bool
 quality_loop:
     for _, quality := range iqiyi_qualities {
@@ -235,10 +234,41 @@ quality_loop:
     return nil
 }
 
+func (self *IQiYiVideoParser) parse() error {
+    var err error
+    err = self.parseVidAndTVid()
+    if err != nil {
+        return err
+    }
+    err = self.parseName()
+    if err != nil {
+        return err
+    }
+    err = self.parseInfo()
+    if err != nil {
+        return err
+    }
+    err = self.parseClips()
+    if err != nil {
+        return err
+    }
+    return nil
+}
+
+func (self *IQiYiVideoParser) Parse() error {
+    var err error
+    for i := 0; i < Lives; i++ {
+        err = self.parse()
+        if err == nil {
+            return nil
+        }
+    }
+    return err
+}
+
 func iqyDecodeLoation(l string) (string, error) {
     items := strings.Split(l, "-")
     n := len(items)
-    //i := n - 1
     b := make([]byte, n, n)
     for i := n - 1; i >= 0; i-- {
         ui1, err := strconv.ParseInt(items[n-i-1], 16, 64)

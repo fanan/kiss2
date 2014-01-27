@@ -59,6 +59,8 @@ func (self *Video) Parse() error {
             self.parser = new(SohuVideoParser)
         } else if strings.Contains(strings.ToLower(u.Host), "youku") {
             self.parser = new(YoukuVideoParser)
+        } else if strings.Contains(strings.ToLower(u.Host), "iqiyi") {
+            self.parser = new(IQiYiVideoParser)
         } else {
             self.err = ErrSiteUnsupported
             return ErrSiteUnsupported
