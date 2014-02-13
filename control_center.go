@@ -4,6 +4,7 @@ import (
     "encoding/json"
     "errors"
     "fmt"
+    "io/ioutil"
     "os"
     "sync"
 )
@@ -119,11 +120,18 @@ func (self *ControlCenter) Init() error {
     if err != nil {
         return err
     }
-    //info := make([]*VideoInfo, 0)
-    info := jsondb{Videos: make([]*VideoInfo, 0), NextId: 0}
-    err = json.NewDecoder(fp).Decode(&info)
+    defer fp.Close()
+    c, err := ioutil.ReadAll(fp)
     if err != nil {
         return err
+    }
+    //info := make([]*VideoInfo, 0)
+    info := jsondb{Videos: make([]*VideoInfo, 0), NextId: 0}
+    if len(c) != 0 {
+        err = json.Unmarshal(c, &info)
+        if err != nil {
+            return err
+        }
     }
     if info.NextId == 0 {
         self.nextId = 1
